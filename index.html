@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<title>Longevity Training System</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#020617">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Longevity System">
+
+<style>
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  background: #020617;
+  color: #e5e7eb;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.container {
+  width: 94%;
+  max-width: 520px;
+  text-align: center;
+}
+
+h1 {
+  font-size: 1.2rem;
+}
+
+select {
+  width: 100%;
+  padding: 10px;
+  margin: 10px 0;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.9rem;
+}
+
+.phase { color: #7dd3fc; font-size: 0.9rem; }
+.movement { font-size: 1.15rem; font-weight: 600; margin-top: 6px; }
+.timer { font-size: 3.2rem; margin: 10px 0; }
+
+.description { font-size: 0.9rem; line-height: 1.4; opacity: 0.9; }
+.next { font-size: 0.8rem; opacity: 0.6; margin-top: 6px; }
+
+button {
+  margin: 6px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #2563eb;
+  color: white;
+}
+
+.secondary { background: #475569; }
+
+#progressWrapper {
+  position: fixed;
+  bottom: 28px;
+  left: 10%;
+  width: 80%;
+}
+
+#progressContainer {
+  height: 10px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 10px;
+}
+
+#progressBar {
+  height: 100%;
+  width: 0%;
+  background: #38bdf8;
+  border-radius: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🧬 Longevity Training</h1>
+
+<select onchange="loadDay(this.value)">
+  <option value="day1">Day 1 – Zone 2 + Lower Body</option>
+  <option value="day2">Day 2 – VO₂ Max</option>
+  <option value="day3">Day 3 – Zone 2 + Upper Body</option>
+  <option value="day4">Day 4 – Flow & Mobility</option>
+</select>
+
+<div class="phase" id="phase"></div>
+<div class="movement" id="movement"></div>
+<div class="timer" id="timer">00:00</div>
+<div class="description" id="description"></div>
+<div class="next" id="next"></div>
+
+<div>
+  <button class="secondary" onclick="prev()">⏮</button>
+  <button onclick="start()">▶</button>
+  <button onclick="pause()">⏸</button>
+  <button class="secondary" onclick="nextStep()">⏭</button>
+</div>
+
+</div>
+
+<div id="progressWrapper">
+  <div id="progressContainer">
+    <div id="progressBar"></div>
+  </div>
+</div>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
+
+/* DAYS DATA */
+const days = {
+
+day1: [
+  {
+    phase: "Zone 2 Cardio",
+    steps: [
+      { name:"Continuous Flow / Brisk Walk", time:900,
+        desc:"Moderate pace. Nasal breathing. You should be able to talk." }
+    ]
+  },
+  {
+    phase: "Lower Body Strength",
+    steps: [
+      { name:"Bodyweight Squats", time:90, desc:"Controlled, knees track toes." },
+      { name:"Reverse Lunges", time:90, desc:"Step back gently, stable torso." },
+      { name:"Glute Bridges", time:90, desc:"Squeeze glutes, neutral spine." },
+      { name:"Standing Calf Raises", time:90, desc:"Slow and full range." }
+    ]
+  }
+],
+
+day2: [
+  {
+    phase: "VO₂ Max Intervals",
+    steps: [
+      { name:"High Intensity Burst", time:40,
+        desc:"Fast movement. Breathing hard." },
+      { name:"Active Recovery", time:90,
+        desc:"Slow walk or light movement." }
+    ]
+  }
+],
+
+day3: [
+  {
+    phase: "Zone 2 Cardio",
+    steps: [
+      { name:"Steady Cardio Flow", time:900,
+        desc:"Relaxed but continuous." }
+    ]
+  },
+  {
+    phase: "Upper Body Strength",
+    steps: [
+      { name:"Push-Ups", time:90, desc:"Strong core, controlled reps." },
+      { name:"Dumbbell Rows", time:90, desc:"Pull elbows back." },
+      { name:"Shoulder Press", time:90, desc:"Light weight, smooth motion." },
+      { name:"Dead Hang", time:60, desc:"Relax spine and shoulders." }
+    ]
+  }
+],
+
+day4: [
+  {
+    phase: "Flow & Mobility",
+    steps: [
+      { name:"Animal Flow", time:300, desc:"Ground-based exploration." },
+      { name:"Balance Practice", time:240, desc:"Single-leg balance." },
+      { name:"Free Yoga Flow", time:300, desc:"Move intuitively." }
+    ]
+  }
+]
+
+};
+
+let practice = days.day1;
+let p=0,s=0,time=practice[0].steps[0].time,interval=null;
+
+function loadDay(d){
+  pause();
+  practice = days[d];
+  p=0; s=0;
+  time = practice[0].steps[0].time;
+  render();
+}
+
+function render(){
+  const step = practice[p].steps[s];
+  phase.textContent = practice[p].phase;
+  movement.textContent = step.name;
+  description.textContent = step.desc;
+  timer.textContent =
+    `${Math.floor(time/60).toString().padStart(2,"0")}:${(time%60).toString().padStart(2,"0")}`;
+}
+
+function start(){
+  if(interval) return;
+  interval=setInterval(()=>{
+    time--;
+    if(time<0) nextStep();
+    render();
+  },1000);
+}
+
+function pause(){ clearInterval(interval); interval=null; }
+
+function nextStep(){
+  s++;
+  if(s>=practice[p].steps.length){ s=0; p++;
+    if(p>=practice.length){ pause(); return; }
+  }
+  time=practice[p].steps[s].time;
+}
+
+function prev(){
+  s--;
+  if(s<0){ p=Math.max(0,p-1); s=practice[p].steps.length-1; }
+  time=practice[p].steps[s].time;
+}
+
+render();
+</script>
+
+</body>
+</html>
