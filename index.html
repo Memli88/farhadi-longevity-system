@@ -10,7 +10,7 @@
 <meta name="theme-color" content="#020617">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Longevity System">
+<meta name="apple-mobile-web-app-title" content="Longevity">
 
 <style>
 body {
@@ -32,40 +32,74 @@ body {
 
 h1 {
   font-size: 1.2rem;
+  margin-bottom: 6px;
 }
 
 select {
   width: 100%;
   padding: 10px;
-  margin: 10px 0;
+  margin-bottom: 10px;
   border-radius: 8px;
   border: none;
   font-size: 0.9rem;
 }
 
-.phase { color: #7dd3fc; font-size: 0.9rem; }
-.movement { font-size: 1.15rem; font-weight: 600; margin-top: 6px; }
-.timer { font-size: 3.2rem; margin: 10px 0; }
+.phase {
+  color: #7dd3fc;
+  font-size: 0.9rem;
+  margin-top: 6px;
+}
 
-.description { font-size: 0.9rem; line-height: 1.4; opacity: 0.9; }
-.next { font-size: 0.8rem; opacity: 0.6; margin-top: 6px; }
+.movement {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-top: 6px;
+}
 
-button {
+.timer {
+  font-size: 3.2rem;
+  margin: 10px 0;
+}
+
+.description {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  opacity: 0.9;
+}
+
+.next {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  margin-top: 6px;
+}
+
+.controls button {
   margin: 6px;
   padding: 10px 14px;
   border-radius: 8px;
   border: none;
   background: #2563eb;
   color: white;
+  font-size: 0.9rem;
 }
 
-.secondary { background: #475569; }
+.secondary {
+  background: #475569;
+}
 
+/* Progress */
 #progressWrapper {
   position: fixed;
   bottom: 28px;
   left: 10%;
   width: 80%;
+}
+
+#progressTime {
+  text-align: center;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-bottom: 6px;
 }
 
 #progressContainer {
@@ -89,7 +123,7 @@ button {
 
 <h1>🧬 Longevity Training</h1>
 
-<select onchange="loadDay(this.value)">
+<select id="daySelect" onchange="loadDay(this.value)">
   <option value="day1">Day 1 – Zone 2 + Lower Body</option>
   <option value="day2">Day 2 – VO₂ Max</option>
   <option value="day3">Day 3 – Zone 2 + Upper Body</option>
@@ -102,135 +136,207 @@ button {
 <div class="description" id="description"></div>
 <div class="next" id="next"></div>
 
-<div>
-  <button class="secondary" onclick="prev()">⏮</button>
-  <button onclick="start()">▶</button>
-  <button onclick="pause()">⏸</button>
-  <button class="secondary" onclick="nextStep()">⏭</button>
+<div class="controls">
+  <button class="secondary" onclick="prev()">⏮ Prev</button>
+  <button onclick="start()">▶ Start</button>
+  <button onclick="pause()">⏸ Pause</button>
+  <button class="secondary" onclick="nextStep()">⏭ Next</button>
+</div>
+
+<div class="controls">
+  <button class="secondary" onclick="reset()">🔄 Reset</button>
 </div>
 
 </div>
 
 <div id="progressWrapper">
+  <div id="progressTime"></div>
   <div id="progressContainer">
     <div id="progressBar"></div>
   </div>
 </div>
 
 <script>
+/* SERVICE WORKER */
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js');
 }
 
-/* DAYS DATA */
-const days = {
+/* ===== SOUND SYSTEM ===== */
+let audioCtx;
+function beep(freq = 880, duration = 150) {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.frequency.value = freq;
+  osc.type = "sine";
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration/1000);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration/1000);
+}
 
+/* ===== TRAINING DAYS DATA ===== */
+const days = {
 day1: [
-  {
-    phase: "Zone 2 Cardio",
-    steps: [
-      { name:"Continuous Flow / Brisk Walk", time:900,
-        desc:"Moderate pace. Nasal breathing. You should be able to talk." }
-    ]
-  },
-  {
-    phase: "Lower Body Strength",
-    steps: [
-      { name:"Bodyweight Squats", time:90, desc:"Controlled, knees track toes." },
-      { name:"Reverse Lunges", time:90, desc:"Step back gently, stable torso." },
-      { name:"Glute Bridges", time:90, desc:"Squeeze glutes, neutral spine." },
-      { name:"Standing Calf Raises", time:90, desc:"Slow and full range." }
-    ]
-  }
+  { phase:"Zone 2 Cardio", steps:[
+    { name:"Continuous Flow / Brisk Walk", time:900,
+      desc:"Moderate pace. Nasal breathing. Able to speak full sentences." }
+  ]},
+  { phase:"Lower Body Strength", steps:[
+    { name:"Bodyweight Squats", time:90, desc:"Controlled descent, tall chest." },
+    { name:"Reverse Lunges", time:90, desc:"Step back gently, stable torso." },
+    { name:"Glute Bridges", time:90, desc:"Squeeze glutes, neutral spine." },
+    { name:"Standing Calf Raises", time:90, desc:"Slow and full range." }
+  ]}
 ],
 
 day2: [
-  {
-    phase: "VO₂ Max Intervals",
-    steps: [
-      { name:"High Intensity Burst", time:40,
-        desc:"Fast movement. Breathing hard." },
-      { name:"Active Recovery", time:90,
-        desc:"Slow walk or light movement." }
-    ]
-  }
+  { phase:"VO₂ Max Intervals", steps:[
+    { name:"High Intensity Burst", time:40,
+      desc:"Very hard effort. Breathing heavy." },
+    { name:"Active Recovery", time:90,
+      desc:"Slow movement. Regain breath." }
+  ]}
 ],
 
 day3: [
-  {
-    phase: "Zone 2 Cardio",
-    steps: [
-      { name:"Steady Cardio Flow", time:900,
-        desc:"Relaxed but continuous." }
-    ]
-  },
-  {
-    phase: "Upper Body Strength",
-    steps: [
-      { name:"Push-Ups", time:90, desc:"Strong core, controlled reps." },
-      { name:"Dumbbell Rows", time:90, desc:"Pull elbows back." },
-      { name:"Shoulder Press", time:90, desc:"Light weight, smooth motion." },
-      { name:"Dead Hang", time:60, desc:"Relax spine and shoulders." }
-    ]
-  }
+  { phase:"Zone 2 Cardio", steps:[
+    { name:"Steady Cardio Flow", time:900,
+      desc:"Continuous, relaxed but focused." }
+  ]},
+  { phase:"Upper Body Strength", steps:[
+    { name:"Push-Ups", time:90, desc:"Strong core, controlled reps." },
+    { name:"Dumbbell Rows", time:90, desc:"Pull elbow toward ribs." },
+    { name:"Shoulder Press", time:90, desc:"Light weight, smooth motion." },
+    { name:"Dead Hang", time:60, desc:"Relax spine and shoulders." }
+  ]}
 ],
 
 day4: [
-  {
-    phase: "Flow & Mobility",
-    steps: [
-      { name:"Animal Flow", time:300, desc:"Ground-based exploration." },
-      { name:"Balance Practice", time:240, desc:"Single-leg balance." },
-      { name:"Free Yoga Flow", time:300, desc:"Move intuitively." }
-    ]
-  }
+  { phase:"Flow & Mobility", steps:[
+    { name:"Animal Flow", time:300, desc:"Ground-based exploration." },
+    { name:"Single-Leg Balance", time:240, desc:"Stable gaze, soft knee." },
+    { name:"Free Yoga Flow", time:300, desc:"Move intuitively with breath." }
+  ]}
 ]
-
 };
 
+/* ===== STATE ===== */
 let practice = days.day1;
-let p=0,s=0,time=practice[0].steps[0].time,interval=null;
+let p = 0, s = 0;
+let time = practice[0].steps[0].time;
+let interval = null;
 
-function loadDay(d){
-  pause();
-  practice = days[d];
-  p=0; s=0;
-  time = practice[0].steps[0].time;
-  render();
+/* ===== HELPERS ===== */
+function totalTime(){
+  return practice.reduce((sum,ph)=>sum+ph.steps.reduce((a,b)=>a+b.time,0),0);
 }
+function elapsed(){
+  let e = 0;
+  for(let i=0;i<p;i++)
+    e += practice[i].steps.reduce((a,b)=>a+b.time,0);
+  for(let j=0;j<s;j++)
+    e += practice[p].steps[j].time;
+  e += practice[p].steps[s].time - time;
+  return e;
+}
+
+/* ===== UI ===== */
+const phaseEl = document.getElementById("phase");
+const movementEl = document.getElementById("movement");
+const timerEl = document.getElementById("timer");
+const descEl = document.getElementById("description");
+const nextEl = document.getElementById("next");
+const progressBar = document.getElementById("progressBar");
+const progressTime = document.getElementById("progressTime");
 
 function render(){
   const step = practice[p].steps[s];
-  phase.textContent = practice[p].phase;
-  movement.textContent = step.name;
-  description.textContent = step.desc;
-  timer.textContent =
+  phaseEl.textContent = practice[p].phase;
+  movementEl.textContent = step.name;
+  descEl.textContent = step.desc;
+
+  timerEl.textContent =
     `${Math.floor(time/60).toString().padStart(2,"0")}:${(time%60).toString().padStart(2,"0")}`;
+
+  const nxt = getNext();
+  nextEl.textContent = nxt ? `Next → ${nxt.name}` : "";
+
+  const e = elapsed();
+  const t = totalTime();
+  progressBar.style.width = `${(e/t)*100}%`;
+  progressTime.textContent =
+    `${Math.floor(e/60)}:${(e%60).toString().padStart(2,"0")} / ${Math.floor(t/60)}:${(t%60).toString().padStart(2,"0")}`;
 }
 
+/* ===== CONTROLS ===== */
 function start(){
   if(interval) return;
-  interval=setInterval(()=>{
+  interval = setInterval(()=>{
     time--;
-    if(time<0) nextStep();
+
+    if(time === 3) beep(700,120);
+    if(time < 0){
+      beep(1000,120);
+      setTimeout(()=>beep(1000,120),150);
+      nextStep();
+    }
     render();
   },1000);
 }
 
-function pause(){ clearInterval(interval); interval=null; }
+function pause(){
+  clearInterval(interval);
+  interval = null;
+}
+
+function reset(){
+  pause();
+  p = 0; s = 0;
+  time = practice[0].steps[0].time;
+  render();
+}
 
 function nextStep(){
   s++;
-  if(s>=practice[p].steps.length){ s=0; p++;
-    if(p>=practice.length){ pause(); return; }
+  if(s >= practice[p].steps.length){
+    s = 0; p++;
+    if(p >= practice.length){
+      pause();
+      movementEl.textContent = "Session Complete 🌿";
+      descEl.textContent = "Well done.";
+      timerEl.textContent = "";
+      nextEl.textContent = "";
+      return;
+    }
   }
-  time=practice[p].steps[s].time;
+  time = practice[p].steps[s].time;
 }
 
 function prev(){
   s--;
-  if(s<0){ p=Math.max(0,p-1); s=practice[p].steps.length-1; }
-  time=practice[p].steps[s].time;
+  if(s < 0){
+    p = Math.max(0,p-1);
+    s = practice[p].steps.length-1;
+  }
+  time = practice[p].steps[s].time;
+}
+
+function getNext(){
+  if(s+1 < practice[p].steps.length) return practice[p].steps[s+1];
+  if(p+1 < practice.length) return practice[p+1].steps[0];
+  return null;
+}
+
+function loadDay(d){
+  pause();
+  practice = days[d];
+  p = 0; s = 0;
+  time = practice[0].steps[0].time;
+  render();
 }
 
 render();
